@@ -21,7 +21,7 @@ RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 
 ENV NODE_ENV=production
-ENV MCP_TRANSPORT=sse
+ENV MCP_TRANSPORT=http
 ENV MCP_PORT=7491
 
 EXPOSE 7491

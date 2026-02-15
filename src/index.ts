@@ -7,13 +7,13 @@
  */
 
 import { appConfig } from "./config.js";
-import { startSseTransport, startStdioTransport } from "./server.js";
+import { startHttpTransport, startStdioTransport } from "./server.js";
 
 async function main(): Promise<void> {
   if (appConfig.transport === "stdio") {
     await startStdioTransport();
   } else {
-    await startSseTransport();
+    await startHttpTransport();
   }
 }
 

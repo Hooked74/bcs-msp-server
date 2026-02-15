@@ -12,5 +12,5 @@ services:
       - BCS_REFRESH_TOKEN=${BCS_REFRESH_TOKEN}
       - BCS_CLIENT_ID=${BCS_CLIENT_ID:-trade-api-read}
       - BCS_BASE_URL=${BCS_BASE_URL:-https://be.broker.ru}
-      - MCP_TRANSPORT=${MCP_TRANSPORT:-sse}
+      - MCP_TRANSPORT=${MCP_TRANSPORT:-http}
       - MCP_PORT=${MCP_PORT:-7491}

@@ -2,14 +2,16 @@
  * Создание и конфигурация MCP-сервера.
  *
  * Поддерживает два транспорта:
- *  - "sse"   — HTTP + SSE на указанном порту (по умолчанию 7491)
+ *  - "http"  — Streamable HTTP на указанном порту (по умолчанию 7491)
  *  - "stdio" — стандартный ввод/вывод (для локального запуска)
  */
 
+import { randomUUID } from "node:crypto";
 import express, { type Request, type Response } from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
 import { appConfig } from "./config.js";
 import { BcsClient } from "./client/index.js";
@@ -37,55 +39,95 @@ function createMcpServer(): McpServer {
 }
 
 // ────────────────────────────────────────────
-// SSE transport (HTTP)
+// Streamable HTTP transport
 // ────────────────────────────────────────────
 
-export async function startSseTransport(): Promise<void> {
+export async function startHttpTransport(): Promise<void> {
   const { port } = appConfig;
   const app = express();
+  app.use(express.json());
 
-  // Храним активные SSE-транспорты по sessionId
-  const transports = new Map<string, SSEServerTransport>();
+  // Храним активные транспорты по sessionId
+  const transports = new Map<string, StreamableHTTPServerTransport>();
 
-  // SSE endpoint — клиент подключается сюда (GET)
-  app.get("/sse", async (_req: Request, res: Response) => {
-    const server = createMcpServer();
-    const transport = new SSEServerTransport("/messages", res);
-    const sessionId = transport.sessionId;
+  // MCP endpoint — основной маршрут для всех MCP-запросов (POST)
+  app.post("/mcp", async (req: Request, res: Response) => {
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    let transport: StreamableHTTPServerTransport;
 
-    transports.set(sessionId, transport);
+    if (sessionId && transports.has(sessionId)) {
+      // Переиспользуем существующий транспорт
+      transport = transports.get(sessionId)!;
+    } else if (!sessionId && isInitializeRequest(req.body)) {
+      // Новый запрос инициализации — создаём сервер и транспорт
+      const server = createMcpServer();
 
-    res.on("close", () => {
-      transports.delete(sessionId);
-    });
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (id) => {
+          transports.set(id, transport);
+        },
+      });
 
-    await server.connect(transport);
+      transport.onclose = () => {
+        const sid = transport.sessionId;
+        if (sid) transports.delete(sid);
+      };
+
+      await server.connect(transport);
+    } else {
+      res.status(400).json({
+        jsonrpc: "2.0",
+        error: { code: -32000, message: "Bad Request: No valid session" },
+        id: null,
+      });
+      return;
+    }
+
+    await transport.handleRequest(req, res, req.body);
   });
 
-  // Message endpoint — клиент шлёт JSON-RPC сюда (POST)
-  app.post("/messages", express.json(), async (req: Request, res: Response) => {
-    const sessionId = req.query.sessionId as string | undefined;
-    if (!sessionId) {
-      res.status(400).json({ error: "Missing sessionId query parameter" });
+  // GET /mcp — SSE stream для server-initiated нотификаций
+  app.get("/mcp", async (req: Request, res: Response) => {
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    if (!sessionId || !transports.has(sessionId)) {
+      res.status(400).json({
+        jsonrpc: "2.0",
+        error: { code: -32000, message: "Invalid or missing session ID" },
+        id: null,
+      });
       return;
     }
 
-    const transport = transports.get(sessionId);
-    if (!transport) {
-      res.status(404).json({ error: "Session not found" });
+    const transport = transports.get(sessionId)!;
+    await transport.handleRequest(req, res);
+  });
+
+  // DELETE /mcp — закрытие сессии
+  app.delete("/mcp", async (req: Request, res: Response) => {
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    if (!sessionId || !transports.has(sessionId)) {
+      res.status(400).json({
+        jsonrpc: "2.0",
+        error: { code: -32000, message: "Invalid or missing session ID" },
+        id: null,
+      });
       return;
     }
 
-    await transport.handlePostMessage(req, res);
+    const transport = transports.get(sessionId)!;
+    await transport.handleRequest(req, res);
   });
 
   // Health check
   app.get("/health", (_req: Request, res: Response) => {
-    res.json({ status: "ok", transport: "sse", port });
+    res.json({ status: "ok", transport: "streamable-http", port });
   });
 
   app.listen(port, () => {
-    console.error(`BCS MCP Server запущен (SSE) → http://localhost:${port}/sse`);
+    console.error(
+      `BCS MCP Server запущен (Streamable HTTP) → http://localhost:${port}/mcp`
+    );
     console.error(`Health check → http://localhost:${port}/health`);
   });
 }

@@ -5,9 +5,9 @@ MCP-сервер для работы с торговым API **БКС Инвес
 ## Архитектура
 
 ```
-┌───────────────┐  SSE / stdio  ┌──────────────────┐   HTTPS    ┌──────────────┐
+┌───────────────┐  HTTP / stdio ┌──────────────────┐   HTTPS    ┌──────────────┐
 │  MCP Host     │◄────────────►│  bcs-mcp-server  │◄──────────►│  BCS API      │
-│  (Claude,     │              │  :7491/sse        │            │  be.broker.ru│
+│  (Claude,     │              │  :7491/mcp        │            │  be.broker.ru│
 │   Cursor,     │              │                  │            └──────────────┘
 │   VS Code)    │              │  HttpClient       │
 └───────────────┘              │   ├─ PortfolioApi  │
@@ -26,7 +26,7 @@ bcs-mcp-server/
 ├── src/
 │   ├── index.ts                  # Точка входа
 │   ├── config.ts                 # Чтение .env, валидация переменных
-│   ├── server.ts                 # Express + SSE / stdio транспорт
+│   ├── server.ts                 # Express + Streamable HTTP / stdio транспорт
 │   ├── client/
 │   │   ├── index.ts              # Реэкспорт всего публичного API
 │   │   ├── types.ts              # Типы: AuthTokens, OrderRequest и др.
@@ -95,9 +95,9 @@ cp .env.example .env
 # Собрать TypeScript
 npm run build
 
-# Запустить (SSE на порту 7491 по умолчанию)
+# Запустить (Streamable HTTP на порту 7491 по умолчанию)
 npm start
-# → http://localhost:7491/sse
+# → http://localhost:7491/mcp
 
 # Или через stdio (для Claude Desktop напрямую)
 MCP_TRANSPORT=stdio node dist/index.js
@@ -122,13 +122,13 @@ docker compose up --build
 
 Добавьте в `claude_desktop_config.json`:
 
-**Вариант A — SSE (рекомендуется для Docker):**
+**Вариант A — Streamable HTTP (рекомендуется для Docker):**
 
 ```json
 {
   "mcpServers": {
     "bcs-trade-api": {
-      "url": "http://localhost:7491/sse"
+      "url": "http://localhost:7491/mcp"
     }
   }
 }
@@ -152,6 +152,19 @@ docker compose up --build
 }
 ```
 
+### Claude Code
+
+```bash
+# Добавить (Streamable HTTP)
+claude mcp add --transport http --scope user bcs http://localhost:7491/mcp
+
+# Или stdio
+claude mcp add --scope user bcs -- node /путь/к/bcs-mcp-server/dist/index.js
+
+# Проверить подключение
+claude mcp list
+```
+
 ### VS Code (MCP Extension)
 
 Установите [MCP Extension for VS Code](https://marketplace.visualstudio.com/items?itemName=modelcontextprotocol.mcp-vscode) и добавьте в `settings.json`:
@@ -160,7 +173,7 @@ docker compose up --build
 {
   "mcp.servers": {
     "bcs-trade-api": {
-      "url": "http://localhost:7491/sse",
+      "url": "http://localhost:7491/mcp",
       "description": "БКС Trade API для работы с портфелем и торговыми заявками"
     }
   }
@@ -175,7 +188,7 @@ docker compose up --build
 {
   "mcpServers": {
     "bcs-trade-api": {
-      "url": "http://localhost:7491/sse",
+      "url": "http://localhost:7491/mcp",
       "name": "BCS Trade API",
       "description": "Торговый API БКС Инвестиции"
     }
@@ -192,7 +205,7 @@ docker compose up --build
   "mcpServers": [
     {
       "name": "bcs-trade-api",
-      "url": "http://localhost:7491/sse",
+      "url": "http://localhost:7491/mcp",
       "description": "BCS Trading API for portfolio and orders management"
     }
   ]
@@ -224,15 +237,15 @@ docker compose up --build
 
 Для любого MCP-клиента используйте один из вариантов:
 
-**SSE (HTTP):**
-- URL: `http://localhost:7491/sse`
+**Streamable HTTP:**
+- URL: `http://localhost:7491/mcp`
 - Health check: `http://localhost:7491/health`
 
 **stdio (процесс):**
 - Command: `node dist/index.js`
 - Env vars: `BCS_REFRESH_TOKEN`, `MCP_TRANSPORT=stdio`
 
-> 💡 **Рекомендация:** Используйте SSE-транспорт для стабильного соединения, особенно при работе через Docker или удалённые серверы.
+> 💡 **Рекомендация:** Используйте HTTP-транспорт для стабильного соединения, особенно при работе через Docker или удалённые серверы.
 
 ## Переменные окружения
 
@@ -241,8 +254,8 @@ docker compose up --build
 | `BCS_REFRESH_TOKEN` | ✅ | — | Refresh-токен из веб-версии БКС |
 | `BCS_CLIENT_ID` | ❌ | `trade-api-read` | `trade-api-read` для чтения, `trade-api-write` для торговли |
 | `BCS_BASE_URL` | ❌ | `https://be.broker.ru` | Базовый URL API |
-| `MCP_TRANSPORT` | ❌ | `sse` | Транспорт: `sse` (HTTP-сервер) или `stdio` |
-| `MCP_PORT` | ❌ | `7491` | Порт для SSE-транспорта |
+| `MCP_TRANSPORT` | ❌ | `http` | Транспорт: `http` (Streamable HTTP сервер) или `stdio` |
+| `MCP_PORT` | ❌ | `7491` | Порт для HTTP-транспорта |
 
 > **Типы токенов:**
 > - `trade-api-read` — чтение портфеля, котировок, поиск инструментов
@@ -358,7 +371,7 @@ await bcs.margin.getDiscounts();
 ### `src/server.ts` — транспорт
 
 Поддерживает два режима:
-- **SSE** — Express HTTP-сервер на порту 7491. Клиент подключается через `GET /sse`, отправляет сообщения через `POST /messages?sessionId=...`. Есть `GET /health`.
+- **Streamable HTTP** — Express HTTP-сервер на порту 7491. Клиент взаимодействует через единый эндпоинт `POST/GET/DELETE /mcp`. Сессии управляются через заголовок `mcp-session-id`. Есть `GET /health`.
 - **stdio** — классический stdio-транспорт для MCP.
 
 ### `src/index.ts` — точка входа

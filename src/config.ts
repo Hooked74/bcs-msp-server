@@ -15,7 +15,7 @@ loadDotenv({ path: resolve(process.cwd(), ".env") });
 // Types
 // ────────────────────────────────────────────
 
-export type TransportType = "stdio" | "sse";
+export type TransportType = "stdio" | "http";
 
 export interface Config {
   /** Refresh-токен из веб-версии БКС */
@@ -24,9 +24,9 @@ export interface Config {
   bcsClientId: string;
   /** Базовый URL торгового API */
   bcsBaseUrl: string;
-  /** Транспорт MCP: "sse" (HTTP) или "stdio" */
+  /** Транспорт MCP: "http" (Streamable HTTP) или "stdio" */
   transport: TransportType;
-  /** Порт для SSE-транспорта */
+  /** Порт для HTTP-транспорта */
   port: number;
 }
 
@@ -54,6 +54,6 @@ export const appConfig: Config = {
   bcsRefreshToken: requiredEnv("BCS_REFRESH_TOKEN"),
   bcsClientId: optionalEnv("BCS_CLIENT_ID", "trade-api-read"),
   bcsBaseUrl: optionalEnv("BCS_BASE_URL", "https://be.broker.ru"),
-  transport: (optionalEnv("MCP_TRANSPORT", "sse") as TransportType),
+  transport: (optionalEnv("MCP_TRANSPORT", "http") as TransportType),
   port: Number(optionalEnv("MCP_PORT", "7491")),
 };
