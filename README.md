@@ -116,7 +116,11 @@ cp .env.example .env
 docker compose up --build
 ```
 
-### Подключение к Claude Desktop
+## Подключение к AI-агентам
+
+### Claude Desktop
+
+Добавьте в `claude_desktop_config.json`:
 
 **Вариант A — SSE (рекомендуется для Docker):**
 
@@ -147,6 +151,88 @@ docker compose up --build
   }
 }
 ```
+
+### VS Code (MCP Extension)
+
+Установите [MCP Extension for VS Code](https://marketplace.visualstudio.com/items?itemName=modelcontextprotocol.mcp-vscode) и добавьте в `settings.json`:
+
+```json
+{
+  "mcp.servers": {
+    "bcs-trade-api": {
+      "url": "http://localhost:7491/sse",
+      "description": "БКС Trade API для работы с портфелем и торговыми заявками"
+    }
+  }
+}
+```
+
+### Cursor IDE
+
+В настройках Cursor → Extensions → MCP добавьте сервер:
+
+```json
+{
+  "mcpServers": {
+    "bcs-trade-api": {
+      "url": "http://localhost:7491/sse",
+      "name": "BCS Trade API",
+      "description": "Торговый API БКС Инвестиции"
+    }
+  }
+}
+```
+
+### Continue.dev
+
+В файле `.continue/config.json` добавьте:
+
+```json
+{
+  "mcpServers": [
+    {
+      "name": "bcs-trade-api",
+      "url": "http://localhost:7491/sse",
+      "description": "BCS Trading API for portfolio and orders management"
+    }
+  ]
+}
+```
+
+### Zed Editor
+
+Добавьте в `settings.json` Zed:
+
+```json
+{
+  "assistant": {
+    "mcp_servers": {
+      "bcs-trade-api": {
+        "command": "node",
+        "args": ["/путь/к/bcs-mcp-server/dist/index.js"],
+        "env": {
+          "BCS_REFRESH_TOKEN": "ваш_refresh_токен",
+          "MCP_TRANSPORT": "stdio"
+        }
+      }
+    }
+  }
+}
+```
+
+### Другие MCP-совместимые клиенты
+
+Для любого MCP-клиента используйте один из вариантов:
+
+**SSE (HTTP):**
+- URL: `http://localhost:7491/sse`
+- Health check: `http://localhost:7491/health`
+
+**stdio (процесс):**
+- Command: `node dist/index.js`
+- Env vars: `BCS_REFRESH_TOKEN`, `MCP_TRANSPORT=stdio`
+
+> 💡 **Рекомендация:** Используйте SSE-транспорт для стабильного соединения, особенно при работе через Docker или удалённые серверы.
 
 ## Переменные окружения
 
