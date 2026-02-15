@@ -1,0 +1,16 @@
+services:
+  bcs-mcp-server:
+    build: .
+    container_name: bcs-mcp-server
+    restart: unless-stopped
+    ports:
+      - "7491:7491"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - BCS_REFRESH_TOKEN=${BCS_REFRESH_TOKEN}
+      - BCS_CLIENT_ID=${BCS_CLIENT_ID:-trade-api-read}
+      - BCS_BASE_URL=${BCS_BASE_URL:-https://be.broker.ru}
+      - MCP_TRANSPORT=${MCP_TRANSPORT:-sse}
+      - MCP_PORT=${MCP_PORT:-7491}
